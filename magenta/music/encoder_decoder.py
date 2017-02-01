@@ -538,6 +538,114 @@ class LookbackEventSequenceEncoderDecoder(EventSequenceEncoderDecoder):
     return self._one_hot_encoding.decode_event(class_index)
 
 
+class RunLengthEventSequenceProductEncoderDecoder(EventSequenceEncoderDecoder):
+  """An encoder/decoder that operates on run-length encoded sequences."""
+
+  def __init__(self, one_hot_encoding, max_run_length, binary_counter_bits=5):
+    """Initialize a RunLengthEventSequenceProductEncoderDecoder object.
+
+    This encoder/decoder operates on run-length encoded event sequences. Input
+    vectors are formed by concatenating one-hot encoded events from the base
+    sequence and one-hot encoded run-lengths. Output labels are the cartesian
+    product of one-hot encoded events from the base sequence and one-hot encoded
+    run-lengths.
+
+    The input vectors also include binary counters over the underlying event
+    sequence.
+
+    Args:
+      one_hot_encoding: A OneHotEncoding object that transforms base events to
+          and from integer indices.
+      max_run_length: The maximum run-length for run-length encoded events.
+      binary_counter_bits: The number of input bits to use as a counter for the
+         metric position of the next event. The counters operate on positions in
+         the underlying event sequence, not the run-length encoded sequence.
+    """
+    self._one_hot_encoding = one_hot_encoding
+    self._max_run_length = max_run_length
+    self._binary_counter_bits = binary_counter_bits
+
+  @property
+  def input_size(self):
+    return (self._one_hot_encoding.num_classes +
+            self._max_run_length +
+            self._binary_counter_bits)
+
+  @property
+  def num_classes(self):
+    return self._one_hot_encoding.num_classes * self._max_run_length
+
+  @property
+  def default_event_label(self):
+    # TODO(iansimon): A single default label really doesn't make sense here.
+    default_event_index = self._one_hot_encoding.encode_event(
+        self._one_hot_encoding.default_event)
+    return default_event_index * self._max_run_length + self._max_run_length - 1
+
+  def events_to_input(self, events, position):
+    """Returns the input vector for the given position in the event sequence.
+
+    The input vector is the concatenation of the one-hot encoded base event, the
+    one-hot encoded run-length, and the binary counters.
+
+    Args:
+      events: A list-like sequence of run-length encoded events.
+      position: An integer event position in the (run-length encoded) event
+          sequence.
+
+    Returns:
+      An input vector, a list of floats.
+    """
+    event, run_length = events[position]
+    input_ = [0.0] * self.input_size
+    input_[self._one_hot_encoding.encode_event(event)] = 1.0
+    input_[self._one_hot_encoding.num_classes + run_length - 1] = 1.0
+
+    # Compute the offset into the underlying sequence.
+    n = sum(run_length for event, run_length in events[:position + 1])
+
+    offset = self._one_hot_encoding.num_classes + self._max_run_length
+    for i in range(self._binary_counter_bits):
+      input_[offset + i] = 1.0 if (n / 2 ** i) % 2 else -1.0
+
+    return input_
+
+  def events_to_label(self, events, position):
+    """Returns the label for the given position in the event sequence.
+
+    The label is the cartesian product of the base event label under
+    `self._one_hot_encoding` and the run-length.
+
+    Args:
+      events: A list-like sequence of run-length encoded events.
+      position: An integer event position in the (run-length encoded) event
+          sequence.
+
+    Returns:
+      A label, an integer.
+    """
+    event, run_length = events[position]
+    event_index = self._one_hot_encoding.encode_event(event)
+    return event_index * self._max_run_length + run_length - 1
+
+  def class_index_to_event(self, class_index, events):
+    """Returns the run-length encoded event for the given class index.
+
+    This is the reverse process of the self.events_to_label method.
+
+    Args:
+      class_index: An integer in the range [0, self.num_classes).
+      events: A list-like sequence of (run-length encoded) events. This object
+          is not used in this implementation.
+
+    Returns:
+      An event value, a tuple of base event and run-length.
+    """
+    event_index = class_index / self._max_run_length
+    run_length = class_index % self._max_run_length + 1
+    return (self._one_hot_encoding.decode_event(event_index), run_length)
+
+
 class ConditionalEventSequenceEncoderDecoder(object):
   """An encoder/decoder for conditional event sequences.
 
