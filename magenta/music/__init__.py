@@ -40,8 +40,10 @@ from magenta.music.encoder_decoder import EventSequenceEncoderDecoder
 from magenta.music.encoder_decoder import LookbackEventSequenceEncoderDecoder
 from magenta.music.encoder_decoder import OneHotEncoding
 from magenta.music.encoder_decoder import OneHotEventSequenceEncoderDecoder
+from magenta.music.encoder_decoder import RunLengthEventSequenceProductEncoderDecoder
 
 from magenta.music.events_lib import NonIntegerStepsPerBarException
+from magenta.music.events_lib import RunLengthEncodedEventSequence
 
 from magenta.music.lead_sheets_lib import extract_lead_sheet_fragments
 from magenta.music.lead_sheets_lib import LeadSheet

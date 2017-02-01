@@ -65,13 +65,19 @@ class EncoderPipeline(pipeline.Pipeline):
     self._min_note = config.min_note
     self._max_note = config.max_note
     self._transpose_to_key = config.transpose_to_key
+    self._max_run_length = config.max_run_length
 
   def transform(self, melody):
     melody.squash(
         self._min_note,
         self._max_note,
         self._transpose_to_key)
-    encoded = self._melody_encoder_decoder.encode(melody)
+    if self._max_run_length:
+      rle_melody = magenta.music.RunLengthEncodedEventSequence(
+          melody, self._max_run_length, only_encode_pad_event=True)
+      encoded = self._melody_encoder_decoder.encode(rle_melody)
+    else:
+      encoded = self._melody_encoder_decoder.encode(melody)
     return [encoded]
 
 

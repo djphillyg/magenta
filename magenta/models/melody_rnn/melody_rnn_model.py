@@ -25,6 +25,8 @@ DEFAULT_MIN_NOTE = 48
 DEFAULT_MAX_NOTE = 84
 DEFAULT_TRANSPOSE_TO_KEY = 0
 
+DEFAULT_MAX_RUN_LENGTH = 15
+
 
 class MelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
   """Class for RNN melody generation models."""
@@ -57,8 +59,26 @@ class MelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
         self._config.max_note,
         self._config.transpose_to_key)
 
-    melody = self._generate_events(num_steps, melody, temperature, beam_size,
-                                   branch_factor, steps_per_iteration)
+    if self._config.max_run_length:
+      # Perform run-length encoding on the melody. This also affects the number
+      # of generation steps to perform in the model; here we conservatively
+      # generate enough steps to achieve the desired length even if all
+      # generated events have run-length 1. Note that this will make the
+      # reported log-likelihoods appear excessively large.
+      rle_melody = mm.RunLengthEncodedEventSequence(
+          melody, self._config.max_run_length, only_encode_pad_event=True)
+      num_rle_steps = num_steps
+      rle_steps_per_iteration = steps_per_iteration
+      rle_melody = self._generate_events(num_rle_steps, rle_melody, temperature,
+                                         beam_size, branch_factor,
+                                         rle_steps_per_iteration)
+      melody.set_length(0)
+      rle_melody.decode(melody)
+      melody.set_length(num_steps)
+      print list(rle_melody)
+    else:
+      melody = self._generate_events(num_steps, melody, temperature, beam_size,
+                                     branch_factor, steps_per_iteration)
 
     melody.transpose(-transpose_amount)
 
@@ -79,6 +99,11 @@ class MelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
         self._config.min_note,
         self._config.max_note,
         self._config.transpose_to_key)
+
+    if self._config.max_run_length:
+      rle_melody = mm.RunLengthEncodedEventSequence(
+          melody_copy, self._config.max_run_length, only_encode_pad_event=True)
+      self._evaluate_log_likelihood([rle_melody])[0]
 
     return self._evaluate_log_likelihood([melody_copy])[0]
 
@@ -104,11 +129,15 @@ class MelodyRnnConfig(events_rnn_model.EventSequenceRnnConfig):
     max_note: The maximum midi pitch (exclusive) the encoded melodies can have.
     transpose_to_key: The key that encoded melodies will be transposed into, or
         None if it should not be transposed.
+    max_run_length: Maximum run-length to use when performing run-length
+        encoding on melodies. If zero, melodies will not be run-length encoded
+        before passing them to `encoder_decoder`.  If nonzero, `encoder_decoder`
+        should operate on run-length encoded melodies.
   """
 
   def __init__(self, details, encoder_decoder, hparams,
                min_note=DEFAULT_MIN_NOTE, max_note=DEFAULT_MAX_NOTE,
-               transpose_to_key=DEFAULT_TRANSPOSE_TO_KEY):
+               transpose_to_key=DEFAULT_TRANSPOSE_TO_KEY, max_run_length=0):
     super(MelodyRnnConfig, self).__init__(details, encoder_decoder, hparams)
 
     if min_note < mm.MIN_MIDI_PITCH:
@@ -127,6 +156,7 @@ class MelodyRnnConfig(events_rnn_model.EventSequenceRnnConfig):
     self.min_note = min_note
     self.max_note = max_note
     self.transpose_to_key = transpose_to_key
+    self.max_run_length = max_run_length
 
 
 # Default configurations.
@@ -183,5 +213,26 @@ default_configs = {
             clip_norm=3,
             initial_learning_rate=0.001,
             decay_steps=1000,
-            decay_rate=0.97))
+            decay_rate=0.97)),
+
+    'rle_rnn': MelodyRnnConfig(
+        magenta.protobuf.generator_pb2.GeneratorDetails(
+            id='rle_rnn',
+            description='Melody RNN with run-length encoding.'),
+        magenta.music.RunLengthEventSequenceProductEncoderDecoder(
+            magenta.music.MelodyOneHotEncoding(
+                min_note=DEFAULT_MIN_NOTE,
+                max_note=DEFAULT_MAX_NOTE),
+            max_run_length=DEFAULT_MAX_RUN_LENGTH),
+        magenta.common.HParams(
+            batch_size=128,
+            rnn_layer_sizes=[256, 256, 256],
+            dropout_keep_prob=0.5,
+            skip_first_n_losses=0,
+            attn_length=40,
+            clip_norm=3,
+            initial_learning_rate=0.001,
+            decay_steps=1000,
+            decay_rate=0.95),
+        max_run_length=DEFAULT_MAX_RUN_LENGTH)
 }
