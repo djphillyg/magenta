@@ -21,7 +21,7 @@ import tensorflow as tf
 from magenta.music import events_lib
 
 
-class EventsLibTest(tf.test.TestCase):
+class EventSequenceTest(tf.test.TestCase):
 
   def testDeepcopy(self):
     events = events_lib.SimpleEventSequence(
@@ -33,7 +33,7 @@ class EventsLibTest(tf.test.TestCase):
     events.set_length(2)
     self.assertNotEqual(events, events_copy)
 
-  def testAppendEvent(self):
+  def testAppend(self):
     events = events_lib.SimpleEventSequence(pad_event=0)
 
     events.append(7)
@@ -88,6 +88,90 @@ class EventsLibTest(tf.test.TestCase):
     events = events_lib.SimpleEventSequence(pad_event=0, events=[1, 0, 1, 0])
     events.increase_resolution(2, fill_event=0)
     self.assertListEqual([1, 0, 0, 0, 1, 0, 0, 0], list(events))
+
+
+class RunLengthEncodedEventSequenceTest(tf.test.TestCase):
+
+  def testEncode(self):
+    base_events = events_lib.SimpleEventSequence(
+        pad_event='_', events=['A', 'A', 'A', 'B', 'C', 'C'], start_step=0)
+    events = events_lib.RunLengthEncodedEventSequence(base_events, 2)
+    expected_events = [('A', 2), ('A', 1), ('B', 1), ('C', 2)]
+    self.assertListEqual(expected_events, list(events))
+    self.assertEqual(base_events.start_step, events.start_step)
+    self.assertEqual(base_events.end_step, events.end_step)
+
+  def testAppend(self):
+    base_events = events_lib.SimpleEventSequence(
+        pad_event='_', events=[], start_step=0)
+    events = events_lib.RunLengthEncodedEventSequence(base_events, 2)
+
+    events.append(('A', 2))
+    self.assertListEqual([('A', 2)], list(events))
+    self.assertEqual(0, events.start_step)
+    self.assertEqual(2, events.end_step)
+
+    events.append(('B', 1))
+    self.assertListEqual([('A', 2), ('B', 1)], list(events))
+    self.assertEqual(0, events.start_step)
+    self.assertEqual(3, events.end_step)
+
+  def testSetLength(self):
+    base_events = events_lib.SimpleEventSequence(
+        pad_event='_', events=[], start_step=1)
+    events = events_lib.RunLengthEncodedEventSequence(base_events, 2)
+
+    events.set_length(3)
+    self.assertListEqual([('_', 2), ('_', 1)], list(events))
+    self.assertEqual(1, events.start_step)
+    self.assertEqual(4, events.end_step)
+
+    events.set_length(4, from_left=True)
+    self.assertListEqual([('_', 2), ('_', 2)], list(events))
+    self.assertEqual(0, events.start_step)
+    self.assertEqual(4, events.end_step)
+
+    events.set_length(2)
+    self.assertListEqual([('_', 2)], list(events))
+    self.assertEqual(0, events.start_step)
+    self.assertEqual(2, events.end_step)
+
+    events.set_length(1, from_left=True)
+    self.assertListEqual([('_', 1)], list(events))
+    self.assertEqual(1, events.start_step)
+    self.assertEqual(2, events.end_step)
+
+    base_events = events_lib.SimpleEventSequence(
+        pad_event='_', events=['A', 'A'], start_step=10)
+    events = events_lib.RunLengthEncodedEventSequence(base_events, 2)
+
+    events.set_length(5)
+    self.assertListEqual([('A', 2), ('_', 2), ('_', 1)], list(events))
+    self.assertEqual(10, events.start_step)
+    self.assertEqual(15, events.end_step)
+
+    events.set_length(6, from_left=True)
+    self.assertListEqual([('_', 1), ('A', 2), ('_', 2), ('_', 1)], list(events))
+    self.assertEqual(9, events.start_step)
+    self.assertEqual(15, events.end_step)
+
+    events.set_length(2)
+    self.assertListEqual([('_', 1), ('A', 1)], list(events))
+    self.assertEqual(9, events.start_step)
+    self.assertEqual(11, events.end_step)
+
+  def testDecode(self):
+    base_events = events_lib.SimpleEventSequence(
+        pad_event='_', events=['A', 'A', 'A', 'B', 'C', 'C'], start_step=0)
+    events = events_lib.RunLengthEncodedEventSequence(base_events, 2)
+
+    decoded_events = copy.deepcopy(base_events)
+    decoded_events.set_length(0)
+    events.decode(decoded_events)
+
+    self.assertListEqual(list(base_events), list(decoded_events))
+    self.assertEqual(base_events.start_step, decoded_events.start_step)
+    self.assertEqual(base_events.end_step, decoded_events.end_step)
 
 
 if __name__ == '__main__':

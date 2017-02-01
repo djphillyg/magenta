@@ -29,8 +29,14 @@ DEFAULT_STEPS_PER_BAR = constants.DEFAULT_STEPS_PER_BAR
 DEFAULT_STEPS_PER_QUARTER = constants.DEFAULT_STEPS_PER_QUARTER
 STANDARD_PPQ = constants.STANDARD_PPQ
 
+DEFAULT_MAX_RUN_LENGTH = DEFAULT_STEPS_PER_BAR
+
 
 class NonIntegerStepsPerBarException(Exception):
+  pass
+
+
+class RunLengthEncodedEventSequenceException(Exception):
   pass
 
 
@@ -83,7 +89,7 @@ class EventSequence(object):
   def set_length(self, steps, from_left=False):
     """Sets the length of the sequence to the specified number of steps.
 
-    If the event sequence is not long enough, will pad  to make the sequence
+    If the event sequence is not long enough, will pad to make the sequence
     the specified length. If it is too long, it will be truncated to the
     requested length.
 
@@ -124,6 +130,7 @@ class SimpleEventSequence(EventSequence):
   the events.
 
   Attributes:
+    pad_event: Event value to use when padding sequences.
     start_step: The offset of the first step of the sequence relative to the
         beginning of the source sequence. Should always be the first step of a
         bar.
@@ -204,7 +211,7 @@ class SimpleEventSequence(EventSequence):
     return len(self._events)
 
   def __deepcopy__(self, unused_memo=None):
-    return type(self)(pad_event=self._pad_event,
+    return type(self)(pad_event=self.pad_event,
                       events=copy.deepcopy(self._events),
                       start_step=self.start_step,
                       steps_per_bar=self.steps_per_bar,
@@ -218,6 +225,10 @@ class SimpleEventSequence(EventSequence):
             self.steps_per_quarter == other.steps_per_quarter and
             self.start_step == other.start_step and
             self.end_step == other.end_step)
+
+  @property
+  def pad_event(self):
+    return self._pad_event
 
   @property
   def start_step(self):
@@ -297,3 +308,235 @@ class SimpleEventSequence(EventSequence):
     self._end_step *= k
     self._steps_per_bar *= k
     self._steps_per_quarter *= k
+
+
+class RunLengthEncodedEventSequence(EventSequence):
+  """Stores a run-length encoded sequence of events.
+
+  Each "event" in the run-length encoded sequence is a tuple consisting of base
+  event and run-length (count), where run-length is an integer between 1 and
+  `max_run_length`.
+
+  If the underlying event sequence contains more than `max_run_length`
+  occurrences in a row of the same base event, this will be represented as
+  multiple events in the run-length encoded sequence.
+
+  Attributes:
+    start_step: The offset of the first step of the sequence relative to the
+        beginning of the source sequence. Should always be the first step of a
+        bar.
+    end_step: The offset to the beginning of the bar following the last step
+       of the sequence relative to the beginning of the source sequence. Will
+       always be the first step of a bar.
+    steps_per_quarter: Number of steps in in a quarter note.
+  """
+
+  def __init__(self, base_events, max_run_length=DEFAULT_MAX_RUN_LENGTH):
+    """Construct a RunLengthEncodedEventSequence from a SimpleEventSequence.
+
+    This applies run-length encoding to the base sequence, compressing repeated
+    events into (event, run-length) tuples.
+
+    Args:
+      base_events: A SimpleEventSequence to run-length encode.
+      max_run_length: The maximum run-length to use. Base events that repeat
+          consecutively more times than this will be split into multiple events
+          in the run-length encoded sequence.
+
+    Raises:
+      RunLengthEncodedEventSequenceException: If `base_events` is not an object
+          of type SimpleEventSequence.
+    """
+    if not isinstance(base_events, SimpleEventSequence):
+      raise RunLengthEncodedEventSequenceException(
+          'base event sequence must have type SimpleEventSequence')
+
+    self._pad_event = base_events.pad_event
+    self._max_run_length = max_run_length
+    self._events = []
+    self._start_step = base_events.start_step
+    self._steps_per_quarter = base_events.steps_per_quarter
+
+    current_event = None
+    current_run_length = 0
+
+    for event in base_events:
+      if event != current_event or current_run_length == max_run_length:
+        if current_run_length > 0:
+          self._events.append((current_event, current_run_length))
+        current_event = event
+        current_run_length = 0
+      current_run_length += 1
+
+    if current_run_length > 0:
+      self._events.append((current_event, current_run_length))
+
+  @property
+  def num_steps(self):
+    """Return the number of steps in the underlying event sequence.
+
+    Returns:
+      The number of steps in the underlying event sequence. (This is always at
+      least as large as the number of events in the run-length encoding.)
+    """
+    return sum(run_length for event, run_length in self._events)
+
+  @property
+  def start_step(self):
+    return self._start_step
+
+  @property
+  def end_step(self):
+    return self.start_step + self.num_steps
+
+  @property
+  def steps_per_quarter(self):
+    return self._steps_per_quarter
+
+  def append(self, event):
+    """Appends a run-length encoded event to the end of the sequence.
+
+    Args:
+      event: The event (a tuple of base event and run-length) to append.
+
+    Raises:
+      ValueError: If `event` is not a length-2 tuple where the 2nd element is an
+          integer between 1 and `self.max_run_length`.
+    """
+    if not isinstance(event, tuple) or len(event) != 2:
+      raise ValueError(
+          'run-length encoded event must be (base event, run-length) tuple')
+    base_event, run_length = event
+    if not isinstance(run_length, int) or run_length < 1:
+      raise ValueError('run-length must be positive integer')
+    if run_length > self._max_run_length:
+      raise ValueError('run-length exceeds maximum run-length')
+
+    self._events.append((base_event, run_length))
+
+  def _padding(self, steps):
+    """Generate run-length encoded padding.
+
+    Args:
+      steps: The number of (underlying) steps of padding to generate.
+
+    Returns:
+      A Python list of run-length encoded padding (`self._pad_event`), consuming
+      `steps` steps.
+    """
+    events = []
+    while steps > 0:
+      added_steps = min(steps, self._max_run_length)
+      events.append((self._pad_event, added_steps))
+      steps -= added_steps
+    return events
+
+  def _standardize_run_lengths(self):
+    """Standardize the run-lengths of this RunLengthEncodedEventSequence.
+
+    Run-length encodings are not unique, e.g. [('A', 2), ('A', 3)] and
+    [('A', 3), ('A', 2)] both decode to the same underlying sequence. This
+    method standardizes run-lengths so that a run-length encoded event with run-
+    length less than `self._max_run_length` cannot precede a run-length encoded
+    event with the same underlying event.
+    """
+    current_event = None
+    current_run_length = 0
+
+    new_events = []
+    for event, run_length in self._events:
+      if event != current_event:
+        if current_run_length > 0:
+          new_events.append((current_event, current_run_length))
+        current_event = event
+        current_run_length = 0
+      current_run_length += run_length
+      if current_run_length >= self._max_run_length:
+        new_events.append((current_event, self._max_run_length))
+        current_run_length -= self._max_run_length
+
+    if current_run_length > 0:
+      new_events.append((current_event, current_run_length))
+
+    self._events = new_events
+
+  def set_length(self, steps, from_left=False):
+    """Sets the length of the sequence to the specified number of steps.
+
+    If the event sequence is not long enough, pads to make the sequence the
+    specified length. If it is too long, it will be truncated to the requested
+    length.
+
+    Args:
+      steps: How many steps long the (underlying) event sequence should be.
+      from_left: Whether to add/remove from the left instead of right.
+    """
+    if steps > self.num_steps:
+      # Add padding to run-length encoded event sequence.
+      steps_to_add = steps - self.num_steps
+      if from_left:
+        self._start_step -= steps_to_add
+        self._events = self._padding(steps_to_add) + self._events
+      else:
+        self._events += self._padding(steps_to_add)
+
+    else:
+      # Remove events from run-length encoded sequence.
+      steps_to_remove = self.num_steps - steps
+      if from_left:
+        self._start_step += steps_to_remove
+        while steps_to_remove > 0:
+          event, run_length = self._events[0]
+          if run_length > steps_to_remove:
+            self._events[0] = (event, run_length - steps_to_remove)
+            steps_to_remove = 0
+          else:
+            self._events = self._events[0:]
+            steps_to_remove -= run_length
+      else:
+        while steps_to_remove > 0:
+          event, run_length = self._events[-1]
+          if run_length > steps_to_remove:
+            self._events[-1] = (event, run_length - steps_to_remove)
+            steps_to_remove = 0
+          else:
+            self._events = self._events[:-1]
+            steps_to_remove -= run_length
+
+    # Fix the sequence so that there are no non-standard run-lengths, e.g. an
+    # event with non-maximum run-length followed by the same event.
+    self._standardize_run_lengths()
+
+  def __getitem__(self, i):
+    """Returns the run-length encoded event at the given index."""
+    return self._events[i]
+
+  def __iter__(self):
+    """Returns an iterator over run-length encoded events."""
+    return iter(self._events)
+
+  def __len__(self):
+    """How many run-length encoded events are in this sequence.
+
+    Returns:
+      Number of events as an integer.
+    """
+    return len(self._events)
+
+  def decode(self, base_events):
+    """Decode run-length encoded event sequence into base sequence.
+
+    Args:
+      base_events: The base SimpleEventSequence object into which to decode the
+          run-length encoded sequence.
+
+    Raises:
+      RunLengthEncodedEventSequenceException: If `base_events` is non-empty.
+    """
+    if base_events:
+      raise RunLengthEncodedEventSequenceException(
+          'cannot decode into non-empty event sequence')
+
+    for (event, run_length) in self._events:
+      for _ in range(run_length):
+        base_events.append(event)
