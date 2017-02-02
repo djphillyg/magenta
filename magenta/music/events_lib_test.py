@@ -101,6 +101,16 @@ class RunLengthEncodedEventSequenceTest(tf.test.TestCase):
     self.assertEqual(base_events.start_step, events.start_step)
     self.assertEqual(base_events.end_step, events.end_step)
 
+  def testEncodeOnlyEncodePadEvent(self):
+    base_events = events_lib.SimpleEventSequence(
+        pad_event='_', events=['A', 'A', '_', '_', '_', 'B'], start_step=0)
+    events = events_lib.RunLengthEncodedEventSequence(
+        base_events, 2, only_encode_pad_event=True)
+    expected_events = [('A', 1), ('A', 1), ('_', 2), ('_', 1), ('B', 1)]
+    self.assertListEqual(expected_events, list(events))
+    self.assertEqual(base_events.start_step, events.start_step)
+    self.assertEqual(base_events.end_step, events.end_step)
+
   def testAppend(self):
     base_events = events_lib.SimpleEventSequence(
         pad_event='_', events=[], start_step=0)
@@ -152,6 +162,28 @@ class RunLengthEncodedEventSequenceTest(tf.test.TestCase):
 
     events.set_length(6, from_left=True)
     self.assertListEqual([('_', 1), ('A', 2), ('_', 2), ('_', 1)], list(events))
+    self.assertEqual(9, events.start_step)
+    self.assertEqual(15, events.end_step)
+
+    events.set_length(2)
+    self.assertListEqual([('_', 1), ('A', 1)], list(events))
+    self.assertEqual(9, events.start_step)
+    self.assertEqual(11, events.end_step)
+
+  def testSetLengthOnlyEncodePadEvent(self):
+    base_events = events_lib.SimpleEventSequence(
+        pad_event='_', events=['A', 'A'], start_step=10)
+    events = events_lib.RunLengthEncodedEventSequence(
+        base_events, 2, only_encode_pad_event=True)
+
+    events.set_length(5)
+    self.assertListEqual([('A', 1), ('A', 1), ('_', 2), ('_', 1)], list(events))
+    self.assertEqual(10, events.start_step)
+    self.assertEqual(15, events.end_step)
+
+    events.set_length(6, from_left=True)
+    self.assertListEqual([('_', 1), ('A', 1), ('A', 1), ('_', 2), ('_', 1)],
+                         list(events))
     self.assertEqual(9, events.start_step)
     self.assertEqual(15, events.end_step)
 

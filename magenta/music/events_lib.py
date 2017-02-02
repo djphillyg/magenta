@@ -331,7 +331,8 @@ class RunLengthEncodedEventSequence(EventSequence):
     steps_per_quarter: Number of steps in in a quarter note.
   """
 
-  def __init__(self, base_events, max_run_length=DEFAULT_MAX_RUN_LENGTH):
+  def __init__(self, base_events, max_run_length=DEFAULT_MAX_RUN_LENGTH,
+               only_encode_pad_event=False):
     """Construct a RunLengthEncodedEventSequence from a SimpleEventSequence.
 
     This applies run-length encoding to the base sequence, compressing repeated
@@ -342,6 +343,9 @@ class RunLengthEncodedEventSequence(EventSequence):
       max_run_length: The maximum run-length to use. Base events that repeat
           consecutively more times than this will be split into multiple events
           in the run-length encoded sequence.
+      only_encode_pad_event: If True, only `base_events.pad_event` will be
+          allowed to have a run-length longer than 1. This is useful when only
+          a single event e.g. MELODY_NO_EVENT is likely to occur in runs.
 
     Raises:
       RunLengthEncodedEventSequenceException: If `base_events` is not an object
@@ -353,15 +357,18 @@ class RunLengthEncodedEventSequence(EventSequence):
 
     self._pad_event = base_events.pad_event
     self._max_run_length = max_run_length
+    self._only_encode_pad_event = only_encode_pad_event
     self._events = []
     self._start_step = base_events.start_step
     self._steps_per_quarter = base_events.steps_per_quarter
 
-    current_event = None
+    current_event = self._pad_event
     current_run_length = 0
 
     for event in base_events:
-      if event != current_event or current_run_length == max_run_length:
+      if (event != current_event or
+          current_run_length == max_run_length or
+          (self._only_encode_pad_event and current_event != self._pad_event)):
         if current_run_length > 0:
           self._events.append((current_event, current_run_length))
         current_event = event
@@ -440,12 +447,13 @@ class RunLengthEncodedEventSequence(EventSequence):
     length less than `self._max_run_length` cannot precede a run-length encoded
     event with the same underlying event.
     """
-    current_event = None
+    current_event = self._pad_event
     current_run_length = 0
 
     new_events = []
     for event, run_length in self._events:
-      if event != current_event:
+      if (event != current_event or
+          (self._only_encode_pad_event and current_event != self._pad_event)):
         if current_run_length > 0:
           new_events.append((current_event, current_run_length))
         current_event = event
