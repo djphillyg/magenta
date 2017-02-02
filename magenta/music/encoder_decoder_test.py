@@ -218,6 +218,47 @@ class LookbackEventSequenceEncoderDecoderTest(tf.test.TestCase):
     self.assertEqual(2, self.enc.class_index_to_event(2, events[:5]))
 
 
+class RunLengthEventSequenceProductEncoderDecoderTest(tf.test.TestCase):
+
+  def setUp(self):
+    self.enc = encoder_decoder.RunLengthEventSequenceProductEncoderDecoder(
+        testing_lib.TrivialOneHotEncoding(3),
+        max_run_length=2, binary_counter_bits=2)
+
+  def testInputSize(self):
+    self.assertEqual(7, self.enc.input_size)
+
+  def testNumClasses(self):
+    self.assertEqual(6, self.enc.num_classes)
+
+  def testEventsToInput(self):
+    events = [(0, 2), (0, 1), (2, 2), (1, 2)]
+    self.assertEqual([1.0, 0.0, 0.0, 0.0, 1.0, -1.0, 1.0],
+                     self.enc.events_to_input(events, 0))
+    self.assertEqual([1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0],
+                     self.enc.events_to_input(events, 1))
+    self.assertEqual([0.0, 0.0, 1.0, 0.0, 1.0, 1.0, -1.0],
+                     self.enc.events_to_input(events, 2))
+    self.assertEqual([0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+                     self.enc.events_to_input(events, 3))
+
+  def testEventsToLabel(self):
+    events = [(0, 2), (0, 1), (2, 2), (1, 2)]
+    self.assertEqual(1, self.enc.events_to_label(events, 0))
+    self.assertEqual(0, self.enc.events_to_label(events, 1))
+    self.assertEqual(5, self.enc.events_to_label(events, 2))
+    self.assertEqual(3, self.enc.events_to_label(events, 3))
+
+  def testClassIndexToEvent(self):
+    events = [(0, 2), (0, 1), (2, 2), (1, 2)]
+    self.assertEqual((0, 1), self.enc.class_index_to_event(0, events))
+    self.assertEqual((0, 2), self.enc.class_index_to_event(1, events))
+    self.assertEqual((1, 1), self.enc.class_index_to_event(2, events))
+    self.assertEqual((1, 2), self.enc.class_index_to_event(3, events))
+    self.assertEqual((2, 1), self.enc.class_index_to_event(4, events))
+    self.assertEqual((2, 2), self.enc.class_index_to_event(5, events))
+
+
 class ConditionalEventSequenceEncoderDecoderTest(tf.test.TestCase):
 
   def setUp(self):
