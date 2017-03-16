@@ -476,13 +476,16 @@ class EventSequenceRnnModel(mm.BaseModel):
 
     loglik = np.empty(len(event_sequences))
 
+    # Since we're computing log-likelihood and not generating, the inputs batch
+    # doesn't need to include the final event in each sequence.
     if control_events is not None:
       # We are conditioning on a control sequence.
       inputs = self._config.encoder_decoder.get_inputs_batch(
-          control_events, event_sequences, full_length=True)
+          control_events, [events[:-1] for events in event_sequences],
+          full_length=True)
     else:
       inputs = self._config.encoder_decoder.get_inputs_batch(
-          event_sequences, full_length=True)
+          [events[:-1] for events in event_sequences], full_length=True)
 
     graph_initial_state = self._session.graph.get_collection('initial_state')[0]
     initial_state = np.tile(
@@ -525,9 +528,12 @@ class EventSequenceRnnConfig(object):
     encoder_decoder: The EventSequenceEncoderDecoder or
         ConditionalEventSequenceEncoderDecoder object to use.
     hparams: The HParams containing hyperparameters to use.
+    steps_per_quarter: The integer number of quantized time steps per quarter
+        note to use.
   """
 
-  def __init__(self, details, encoder_decoder, hparams):
+  def __init__(self, details, encoder_decoder, hparams, steps_per_quarter=4):
     self.details = details
     self.encoder_decoder = encoder_decoder
     self.hparams = hparams
+    self.steps_per_quarter = steps_per_quarter
