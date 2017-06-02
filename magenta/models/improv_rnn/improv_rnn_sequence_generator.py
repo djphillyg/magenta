@@ -39,7 +39,8 @@ class ImprovRnnSequenceGenerator(mm.BaseSequenceGenerator):
           and metagraph. Mutually exclusive with `checkpoint`.
     """
     super(ImprovRnnSequenceGenerator, self).__init__(
-        model, details, steps_per_quarter, checkpoint, bundle)
+        model, details, checkpoint, bundle)
+    self.steps_per_quarter = steps_per_quarter
 
   def _generate(self, input_sequence, generator_options):
     if len(generator_options.input_sections) > 1:
@@ -85,9 +86,9 @@ class ImprovRnnSequenceGenerator(mm.BaseSequenceGenerator):
 
     # Quantize the priming and backing sequences.
     quantized_primer_sequence = mm.quantize_note_sequence(
-        primer_sequence, self._steps_per_quarter)
+        primer_sequence, self.steps_per_quarter)
     quantized_backing_sequence = mm.quantize_note_sequence(
-        backing_sequence, self._steps_per_quarter)
+        backing_sequence, self.steps_per_quarter)
 
     # Setting gap_bars to infinite ensures that the entire input will be used.
     extracted_melodies, _ = mm.extract_melodies(
