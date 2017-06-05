@@ -31,14 +31,23 @@ EVENT_RANGES = [
         1, performance_lib.MAX_SHIFT_STEPS),
 ]
 
+EVENT_RANGES_WITH_VELOCITY = EVENT_RANGES + [
+    (PerformanceEvent.VELOCITY,
+        performance_lib.MIN_MIDI_VELOCITY, performance_lib.MAX_MIDI_VELOCITY)
+]
+
 
 class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
   """One-hot encoding for performance events."""
 
+  def __init__(self, use_velocity=False):
+    self._event_ranges = (EVENT_RANGES_WITH_VELOCITY if use_velocity
+                          else EVENT_RANGES)
+
   @property
   def num_classes(self):
     return sum(max_value - min_value + 1
-               for event_type, min_value, max_value in EVENT_RANGES)
+               for event_type, min_value, max_value in self._event_ranges)
 
   @property
   def default_event(self):
@@ -48,7 +57,7 @@ class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
 
   def encode_event(self, event):
     offset = 0
-    for event_type, min_value, max_value in EVENT_RANGES:
+    for event_type, min_value, max_value in self._event_ranges:
       if event.event_type == event_type:
         return offset + event.event_value - min_value
       offset += max_value - min_value + 1
@@ -57,7 +66,7 @@ class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
 
   def decode_event(self, index):
     offset = 0
-    for event_type, min_value, max_value in EVENT_RANGES:
+    for event_type, min_value, max_value in self._event_ranges:
       if offset <= index <= offset + max_value - min_value:
         return PerformanceEvent(
             event_type=event_type, event_value=min_value + index - offset)

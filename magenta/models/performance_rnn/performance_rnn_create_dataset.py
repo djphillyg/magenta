@@ -41,6 +41,7 @@ tf.app.flags.DEFINE_string('output_dir', None,
                            'Directory to write training and eval TFRecord '
                            'files. The TFRecord files are populated with '
                            'SequenceExample protos.')
+tf.app.flags.DEFINE_string('config', 'performance', 'The config to use')
 tf.app.flags.DEFINE_float('eval_ratio', 0.1,
                           'Fraction of input to set aside for eval set. '
                           'Partition is randomly selected.')
@@ -52,19 +53,21 @@ tf.app.flags.DEFINE_string('log', 'INFO',
 class PerformanceExtractor(pipeline.Pipeline):
   """Extracts polyphonic tracks from a quantized NoteSequence."""
 
-  def __init__(self, min_events, max_events, name=None):
+  def __init__(self, min_events, max_events, use_velocity, name=None):
     super(PerformanceExtractor, self).__init__(
         input_type=music_pb2.NoteSequence,
         output_type=performance_lib.Performance,
         name=name)
     self._min_events = min_events
     self._max_events = max_events
+    self._use_velocity = use_velocity
 
   def transform(self, quantized_sequence):
     performances, stats = performance_lib.extract_performances(
         quantized_sequence,
         min_events_discard=self._min_events,
-        max_events_truncate=self._max_events)
+        max_events_truncate=self._max_events,
+        use_velocity=self._use_velocity)
     self._set_stats(stats)
     return performances
 
@@ -73,7 +76,7 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
   """Returns the Pipeline instance which creates the RNN dataset.
 
   Args:
-    config: An EventSequenceRnnConfig.
+    config: A PerformanceRnnConfig.
     min_events: Minimum number of events for an extracted sequence.
     max_events: Maximum number of events for an extracted sequence.
     eval_ratio: Fraction of input to set aside for evaluation set.
@@ -96,7 +99,7 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
         transposition_range, name='TranspositionPipeline_' + mode)
     perf_extractor = PerformanceExtractor(
         min_events=min_events, max_events=max_events,
-        name='PerformanceExtractor_' + mode)
+        use_velocity=config.use_velocity, name='PerformanceExtractor_' + mode)
     encoder_pipeline = encoder_decoder.EncoderPipeline(
         performance_lib.Performance, config.encoder_decoder,
         name='EncoderPipeline_' + mode)
@@ -117,7 +120,7 @@ def main(unused_argv):
       min_events=32,
       max_events=512,
       eval_ratio=FLAGS.eval_ratio,
-      config=performance_model.default_configs['performance'])
+      config=performance_model.default_configs[FLAGS.config])
 
   input_dir = os.path.expanduser(FLAGS.input)
   output_dir = os.path.expanduser(FLAGS.output_dir)

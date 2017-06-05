@@ -32,6 +32,9 @@ from magenta.protobuf import music_pb2
 MAX_MIDI_PITCH = constants.MAX_MIDI_PITCH
 MIN_MIDI_PITCH = constants.MIN_MIDI_PITCH
 
+MAX_MIDI_VELOCITY = constants.MAX_MIDI_VELOCITY
+MIN_MIDI_VELOCITY = constants.MIN_MIDI_VELOCITY
+
 STANDARD_PPQ = constants.STANDARD_PPQ
 
 DEFAULT_STEPS_PER_SECOND = 100
@@ -47,10 +50,12 @@ class PerformanceEvent(object):
   NOTE_OFF = 2
   # Shift time forward.
   TIME_SHIFT = 3
+  # Change current velocity.
+  VELOCITY = 4
 
   def __init__(self, event_type, event_value):
     if not (PerformanceEvent.NOTE_ON <= event_type <=
-            PerformanceEvent.TIME_SHIFT):
+            PerformanceEvent.VELOCITY):
       raise ValueError('Invalid event type: %s' % event_type)
 
     if (event_type == PerformanceEvent.NOTE_ON or
@@ -60,6 +65,9 @@ class PerformanceEvent(object):
     elif event_type == PerformanceEvent.TIME_SHIFT:
       if not (1 <= event_value <= MAX_SHIFT_STEPS):
         raise ValueError('Invalid time shift value: %s' % event_value)
+    elif event_type == PerformanceEvent.VELOCITY:
+      if not (MIN_MIDI_VELOCITY <= event_value <= MAX_MIDI_VELOCITY):
+        raise ValueError('Invalid velocity value: %s' % event_value)
 
     self.event_type = event_type
     self.event_value = event_value
@@ -81,7 +89,7 @@ class Performance(events_lib.EventSequence):
   """
 
   def __init__(self, quantized_sequence=None, steps_per_second=None,
-               start_step=0):
+               start_step=0, use_velocity=False):
     """Construct a Performance.
 
     Either quantized_sequence or steps_per_second should be supplied.
@@ -92,13 +100,14 @@ class Performance(events_lib.EventSequence):
       start_step: The offset of this sequence relative to the
           beginning of the source sequence. If a quantized sequence is used as
           input, only notes starting after this step will be considered.
+      use_velocity: If True, include velocity change events.
     """
     assert (quantized_sequence, steps_per_second).count(None) == 1
 
     if quantized_sequence:
       sequences_lib.assert_is_absolute_quantized_sequence(quantized_sequence)
       self._events = self._from_quantized_sequence(quantized_sequence,
-                                                   start_step)
+                                                   start_step, use_velocity)
       self._steps_per_second = (
           quantized_sequence.quantization_info.steps_per_second)
     else:
@@ -224,6 +233,8 @@ class Performance(events_lib.EventSequence):
         strs.append('(%s, OFF)' % event.event_value)
       elif event.event_type == PerformanceEvent.TIME_SHIFT:
         strs.append('(%s, SHIFT)' % event.event_value)
+      elif event.event_type == PerformanceEvent.VELOCITY:
+        strs.append('(%s, VELOCITY)' % event.event_value)
       else:
         raise ValueError('Unknown event type: %s' % event.event_type)
     return '\n'.join(strs)
@@ -246,7 +257,8 @@ class Performance(events_lib.EventSequence):
     return steps
 
   @staticmethod
-  def _from_quantized_sequence(quantized_sequence, start_step=0):
+  def _from_quantized_sequence(quantized_sequence, start_step=0,
+                               use_velocity=False):
     """Populate self with events from the given quantized NoteSequence object.
 
     Within a step, new pitches are started with NOTE_ON and existing pitches are
@@ -255,6 +267,7 @@ class Performance(events_lib.EventSequence):
     Args:
       quantized_sequence: A quantized NoteSequence instance.
       start_step: Start converting the sequence at this time step.
+      use_velocity: If True, include velocity changes.
 
     Returns:
       A list of events.
@@ -271,6 +284,7 @@ class Performance(events_lib.EventSequence):
     note_events = sorted(onsets + offsets)
 
     current_step = start_step
+    current_velocity = 0
     performance_events = []
 
     for step, idx, is_offset in note_events:
@@ -286,6 +300,15 @@ class Performance(events_lib.EventSequence):
             PerformanceEvent(event_type=PerformanceEvent.TIME_SHIFT,
                              event_value=step - current_step))
         current_step = step
+
+      # If we're using velocity and this note's velocity is different from the
+      # current velocity, change the current velocity.
+      if (use_velocity and not is_offset and
+          sorted_notes[idx].velocity != current_velocity):
+        current_velocity = sorted_notes[idx].velocity
+        performance_events.append(
+            PerformanceEvent(event_type=PerformanceEvent.VELOCITY,
+                             event_value=current_velocity))
 
       # Add a performance event for this note on/off.
       event_type = (PerformanceEvent.NOTE_OFF if is_offset
@@ -304,6 +327,8 @@ class Performance(events_lib.EventSequence):
 
     Args:
       velocity: Midi velocity to give each note. Between 1 and 127 (inclusive).
+          If the performance contains velocity events, those will be used
+          instead.
       instrument: Midi instrument to give each note.
       program: Midi program to give each note.
 
@@ -321,20 +346,23 @@ class Performance(events_lib.EventSequence):
     sequence.ticks_per_quarter = STANDARD_PPQ
 
     step = 0
+
     # Map pitch to list because one pitch may be active multiple times.
-    pitch_start_steps = collections.defaultdict(list)
+    pitch_start_steps_and_velocities = collections.defaultdict(list)
     for i, event in enumerate(self):
       if event.event_type == PerformanceEvent.NOTE_ON:
-        pitch_start_steps[event.event_value].append(step)
+        pitch_start_steps_and_velocities[event.event_value].append(
+            (step, velocity))
       elif event.event_type == PerformanceEvent.NOTE_OFF:
-        if not pitch_start_steps[event.event_value]:
+        if not pitch_start_steps_and_velocities[event.event_value]:
           tf.logging.debug(
               'Ignoring NOTE_OFF at position %d with no previous NOTE_ON' % i)
         else:
           # Create a note for the pitch that is now ending.
-          pitch_start_step = pitch_start_steps[event.event_value][0]
-          pitch_start_steps[event.event_value] = (
-              pitch_start_steps[event.event_value][1:])
+          pitch_start_step, pitch_velocity = pitch_start_steps_and_velocities[
+              event.event_value][0]
+          pitch_start_steps_and_velocities[event.event_value] = (
+              pitch_start_steps_and_velocities[event.event_value][1:])
           if step == pitch_start_step:
             tf.logging.debug(
                 'Ignoring note with zero duration at step %d' % step)
@@ -344,20 +372,23 @@ class Performance(events_lib.EventSequence):
                              sequence_start_time)
           note.end_time = step * seconds_per_step + sequence_start_time
           note.pitch = event.event_value
-          note.velocity = velocity
+          note.velocity = pitch_velocity
           note.instrument = instrument
           note.program = program
           if note.end_time > sequence.total_time:
             sequence.total_time = note.end_time
       elif event.event_type == PerformanceEvent.TIME_SHIFT:
         step += event.event_value
+      elif event.event_type == PerformanceEvent.VELOCITY:
+        velocity = event.event_value
       else:
         raise ValueError('Unknown event type: %s' % event.event_type)
 
     # There could be remaining pitches that were never ended. End them now
     # and create notes.
-    for pitch in pitch_start_steps:
-      for pitch_start_step in pitch_start_steps[pitch]:
+    for pitch in pitch_start_steps_and_velocities:
+      for pitch_start_step, pitch_velocity in pitch_start_steps_and_velocities[
+            pitch]:
         if step == pitch_start_step:
           tf.logging.debug(
               'Ignoring note with zero duration at step %d' % step)
@@ -367,7 +398,7 @@ class Performance(events_lib.EventSequence):
                            sequence_start_time)
         note.end_time = step * seconds_per_step + sequence_start_time
         note.pitch = pitch
-        note.velocity = velocity
+        note.velocity = pitch_velocity
         note.instrument = instrument
         note.program = program
         if note.end_time > sequence.total_time:
@@ -378,7 +409,7 @@ class Performance(events_lib.EventSequence):
 
 def extract_performances(
     quantized_sequence, start_step=0, min_events_discard=None,
-    max_events_truncate=None):
+    max_events_truncate=None, use_velocity=False):
   """Extracts a performance from the given quantized NoteSequence.
 
   Currently, this extracts only one performance from a given track.
@@ -390,6 +421,7 @@ def extract_performances(
         discarded.
     max_events_truncate: Maximum length of tracks in events. Longer tracks are
         truncated.
+    use_velocity: If True, also encode note velocities.
 
   Returns:
     performances: A python list of Performance instances.
@@ -420,7 +452,8 @@ def extract_performances(
   performances = []
 
   # Translate the quantized sequence into a Performance.
-  performance = Performance(quantized_sequence, start_step=start_step)
+  performance = Performance(quantized_sequence, start_step=start_step,
+                            use_velocity=use_velocity)
 
   if (max_events_truncate is not None and
       len(performance) > max_events_truncate):

@@ -129,8 +129,8 @@ py_test(
     srcs = ["performance_rnn_create_dataset_test.py"],
     deps = [
         ":performance_lib",
+        ":performance_model",
         ":performance_rnn_create_dataset",
-        "//magenta/models/shared:events_rnn_model",
         "//magenta",
         # tensorflow dep
     ],

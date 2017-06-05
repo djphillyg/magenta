@@ -60,8 +60,21 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
     return self._evaluate_log_likelihood([sequence])[0]
 
 
+class PerformanceRnnConfig(events_rnn_model.EventSequenceRnnConfig):
+  """Stores a configuration for a Performance RNN.
+
+  Attributes:
+    use_velocity: Whether or not to encode note velocities.
+  """
+
+  def __init__(self, details, encoder_decoder, hparams, use_velocity=False):
+    super(PerformanceRnnConfig, self).__init__(
+        details, encoder_decoder, hparams)
+    self.use_velocity = use_velocity
+
+
 default_configs = {
-    'performance': events_rnn_model.EventSequenceRnnConfig(
+    'performance': PerformanceRnnConfig(
         magenta.protobuf.generator_pb2.GeneratorDetails(
             id='performance',
             description='Performance RNN'),
@@ -73,4 +86,19 @@ default_configs = {
             dropout_keep_prob=0.75,
             clip_norm=5,
             learning_rate=0.001)),
+
+    'performance_with_dynamics': PerformanceRnnConfig(
+        magenta.protobuf.generator_pb2.GeneratorDetails(
+            id='performance_with_dynamics',
+            description='Performance RNN with dynamics'),
+        magenta.music.OneHotEventSequenceEncoderDecoder(
+            performance_encoder_decoder.PerformanceOneHotEncoding(
+                use_velocity=True)),
+        magenta.common.HParams(
+            batch_size=64,
+            rnn_layer_sizes=[512, 512, 512],
+            dropout_keep_prob=0.75,
+            clip_norm=5,
+            learning_rate=0.001),
+        use_velocity=True),
 }

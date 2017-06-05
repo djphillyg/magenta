@@ -127,12 +127,12 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
       performance.set_length(min(performance_lib.MAX_SHIFT_STEPS, total_steps))
 
     while performance.num_steps < total_steps:
-      # Assume there's around 5 notes per second and 3 RNN steps per note. Can't
+      # Assume there's around 5 notes per second and 4 RNN steps per note. Can't
       # know for sure until generation is finished because the number of notes
       # per quantized step is variable.
       steps_to_gen = total_steps - performance.num_steps
-      rnn_steps_to_gen = int(math.ceil(
-          15.0 * steps_to_gen / performance_lib.DEFAULT_STEPS_PER_SECOND))
+      rnn_steps_to_gen = 20 * int(math.ceil(
+          float(steps_to_gen) / performance_lib.DEFAULT_STEPS_PER_SECOND))
       tf.logging.info(
           'Need to generate %d more steps for this sequence, will try asking '
           'for %d RNN steps' % (steps_to_gen, rnn_steps_to_gen))
