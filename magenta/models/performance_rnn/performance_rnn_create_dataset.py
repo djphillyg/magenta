@@ -30,6 +30,7 @@ from magenta.models.performance_rnn import performance_model
 from magenta.music import encoder_decoder
 from magenta.music import sequences_lib
 from magenta.pipelines import dag_pipeline
+from magenta.pipelines import note_sequence_pipelines
 from magenta.pipelines import pipeline
 from magenta.pipelines import pipelines_common
 from magenta.protobuf import music_pb2
@@ -53,21 +54,21 @@ tf.app.flags.DEFINE_string('log', 'INFO',
 class PerformanceExtractor(pipeline.Pipeline):
   """Extracts polyphonic tracks from a quantized NoteSequence."""
 
-  def __init__(self, min_events, max_events, use_velocity, name=None):
+  def __init__(self, min_events, max_events, num_velocity_bins, name=None):
     super(PerformanceExtractor, self).__init__(
         input_type=music_pb2.NoteSequence,
         output_type=performance_lib.Performance,
         name=name)
     self._min_events = min_events
     self._max_events = max_events
-    self._use_velocity = use_velocity
+    self._num_velocity_bins = num_velocity_bins
 
   def transform(self, quantized_sequence):
     performances, stats = performance_lib.extract_performances(
         quantized_sequence,
         min_events_discard=self._min_events,
         max_events_truncate=self._max_events,
-        use_velocity=self._use_velocity)
+        num_velocity_bins=self._num_velocity_bins)
     self._set_stats(stats)
     return performances
 
@@ -93,18 +94,25 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
   dag = {partitioner: dag_pipeline.DagInput(music_pb2.NoteSequence)}
 
   for mode in ['eval', 'training']:
-    quantizer = pipelines_common.Quantizer(
+    sustain_pipeline = note_sequence_pipelines.SustainPipeline(
+        name='SustainPipeline_' + mode)
+    splitter = note_sequence_pipelines.Splitter(
+        hop_size_seconds=30.0, name='Splitter_' + mode)
+    quantizer = note_sequence_pipelines.Quantizer(
         steps_per_second=config.steps_per_second, name='Quantizer_' + mode)
-    transposition_pipeline = sequences_lib.TranspositionPipeline(
+    transposition_pipeline = note_sequence_pipelines.TranspositionPipeline(
         transposition_range, name='TranspositionPipeline_' + mode)
     perf_extractor = PerformanceExtractor(
         min_events=min_events, max_events=max_events,
-        use_velocity=config.use_velocity, name='PerformanceExtractor_' + mode)
+        num_velocity_bins=config.num_velocity_bins,
+        name='PerformanceExtractor_' + mode)
     encoder_pipeline = encoder_decoder.EncoderPipeline(
         performance_lib.Performance, config.encoder_decoder,
         name='EncoderPipeline_' + mode)
 
-    dag[quantizer] = partitioner[mode + '_performances']
+    dag[sustain_pipeline] = partitioner[mode + '_performances']
+    dag[splitter] = sustain_pipeline
+    dag[quantizer] = splitter
     dag[transposition_pipeline] = quantizer
     dag[perf_extractor] = transposition_pipeline
     dag[encoder_pipeline] = perf_extractor

@@ -31,18 +31,16 @@ EVENT_RANGES = [
         1, performance_lib.MAX_SHIFT_STEPS),
 ]
 
-EVENT_RANGES_WITH_VELOCITY = EVENT_RANGES + [
-    (PerformanceEvent.VELOCITY,
-        performance_lib.MIN_MIDI_VELOCITY, performance_lib.MAX_MIDI_VELOCITY)
-]
-
 
 class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
   """One-hot encoding for performance events."""
 
-  def __init__(self, use_velocity=False):
-    self._event_ranges = (EVENT_RANGES_WITH_VELOCITY if use_velocity
-                          else EVENT_RANGES)
+  def __init__(self, num_velocity_bins=0):
+    if num_velocity_bins > 0:
+      self._event_ranges = EVENT_RANGES + [
+          (PerformanceEvent.VELOCITY, 1, num_velocity_bins)]
+    else:
+      self._event_ranges = EVENT_RANGES
 
   @property
   def num_classes(self):

@@ -17,6 +17,7 @@ from __future__ import division
 
 import collections
 import copy
+import math
 
 # internal imports
 
@@ -34,6 +35,7 @@ MIN_MIDI_PITCH = constants.MIN_MIDI_PITCH
 
 MAX_MIDI_VELOCITY = constants.MAX_MIDI_VELOCITY
 MIN_MIDI_VELOCITY = constants.MIN_MIDI_VELOCITY
+MAX_NUM_VELOCITY_BINS = MAX_MIDI_VELOCITY - MIN_MIDI_VELOCITY + 1
 
 STANDARD_PPQ = constants.STANDARD_PPQ
 
@@ -66,7 +68,7 @@ class PerformanceEvent(object):
       if not (1 <= event_value <= MAX_SHIFT_STEPS):
         raise ValueError('Invalid time shift value: %s' % event_value)
     elif event_type == PerformanceEvent.VELOCITY:
-      if not (MIN_MIDI_VELOCITY <= event_value <= MAX_MIDI_VELOCITY):
+      if not (1 <= event_value <= MAX_NUM_VELOCITY_BINS):
         raise ValueError('Invalid velocity value: %s' % event_value)
 
     self.event_type = event_type
@@ -89,7 +91,7 @@ class Performance(events_lib.EventSequence):
   """
 
   def __init__(self, quantized_sequence=None, steps_per_second=None,
-               start_step=0, use_velocity=False):
+               start_step=0, num_velocity_bins=0):
     """Construct a Performance.
 
     Either quantized_sequence or steps_per_second should be supplied.
@@ -100,14 +102,23 @@ class Performance(events_lib.EventSequence):
       start_step: The offset of this sequence relative to the
           beginning of the source sequence. If a quantized sequence is used as
           input, only notes starting after this step will be considered.
-      use_velocity: If True, include velocity change events.
+      num_velocity_bins: Number of velocity bins to use. If 0, velocity events
+          will not be included at all.
+
+    Raises:
+      ValueError: If `num_velocity_bins` is larger than the number of MIDI
+          velocity values.
     """
     assert (quantized_sequence, steps_per_second).count(None) == 1
 
+    if num_velocity_bins > MAX_MIDI_VELOCITY - MIN_MIDI_VELOCITY + 1:
+      raise ValueError(
+          'Number of velocity bins is too large: %d' % num_velocity_bins)
+
     if quantized_sequence:
       sequences_lib.assert_is_absolute_quantized_sequence(quantized_sequence)
-      self._events = self._from_quantized_sequence(quantized_sequence,
-                                                   start_step, use_velocity)
+      self._events = self._from_quantized_sequence(
+          quantized_sequence, start_step, num_velocity_bins)
       self._steps_per_second = (
           quantized_sequence.quantization_info.steps_per_second)
     else:
@@ -115,6 +126,7 @@ class Performance(events_lib.EventSequence):
       self._steps_per_second = steps_per_second
 
     self._start_step = start_step
+    self._num_velocity_bins = num_velocity_bins
 
   @property
   def start_step(self):
@@ -258,16 +270,19 @@ class Performance(events_lib.EventSequence):
 
   @staticmethod
   def _from_quantized_sequence(quantized_sequence, start_step=0,
-                               use_velocity=False):
+                               num_velocity_bins=0):
     """Populate self with events from the given quantized NoteSequence object.
 
     Within a step, new pitches are started with NOTE_ON and existing pitches are
     ended with NOTE_OFF. TIME_SHIFT shifts the current step forward in time.
+    VELOCITY changes the current velocity value that will be applied to all
+    NOTE_ON events.
 
     Args:
       quantized_sequence: A quantized NoteSequence instance.
       start_step: Start converting the sequence at this time step.
-      use_velocity: If True, include velocity changes.
+      num_velocity_bins: Number of velocity bins to use. If 0, velocity events
+          will not be included at all.
 
     Returns:
       A list of events.
@@ -283,8 +298,14 @@ class Performance(events_lib.EventSequence):
                for idx, note in enumerate(sorted_notes)]
     note_events = sorted(onsets + offsets)
 
+    if num_velocity_bins:
+      velocity_bin_size = int(math.ceil(
+          (MAX_MIDI_VELOCITY - MIN_MIDI_VELOCITY + 1) / num_velocity_bins))
+      velocity_to_bin = (
+          lambda v: (v - MIN_MIDI_VELOCITY) // velocity_bin_size + 1)
+
     current_step = start_step
-    current_velocity = 0
+    current_velocity_bin = 0
     performance_events = []
 
     for step, idx, is_offset in note_events:
@@ -303,12 +324,13 @@ class Performance(events_lib.EventSequence):
 
       # If we're using velocity and this note's velocity is different from the
       # current velocity, change the current velocity.
-      if (use_velocity and not is_offset and
-          sorted_notes[idx].velocity != current_velocity):
-        current_velocity = sorted_notes[idx].velocity
-        performance_events.append(
-            PerformanceEvent(event_type=PerformanceEvent.VELOCITY,
-                             event_value=current_velocity))
+      if num_velocity_bins:
+        velocity_bin = velocity_to_bin(sorted_notes[idx].velocity)
+        if (not is_offset and velocity_bin != current_velocity_bin):
+          current_velocity_bin = velocity_bin
+          performance_events.append(
+              PerformanceEvent(event_type=PerformanceEvent.VELOCITY,
+                               event_value=current_velocity_bin))
 
       # Add a performance event for this note on/off.
       event_type = (PerformanceEvent.NOTE_OFF if is_offset
@@ -347,6 +369,11 @@ class Performance(events_lib.EventSequence):
 
     step = 0
 
+    if self._num_velocity_bins:
+      velocity_bin_size = int(math.ceil(
+          (MAX_MIDI_VELOCITY - MIN_MIDI_VELOCITY + 1) /
+          self._num_velocity_bins))
+
     # Map pitch to list because one pitch may be active multiple times.
     pitch_start_steps_and_velocities = collections.defaultdict(list)
     for i, event in enumerate(self):
@@ -380,7 +407,9 @@ class Performance(events_lib.EventSequence):
       elif event.event_type == PerformanceEvent.TIME_SHIFT:
         step += event.event_value
       elif event.event_type == PerformanceEvent.VELOCITY:
-        velocity = event.event_value
+        assert self._num_velocity_bins
+        velocity = (
+            MIN_MIDI_VELOCITY + (event.event_value - 1) * velocity_bin_size)
       else:
         raise ValueError('Unknown event type: %s' % event.event_type)
 
@@ -409,7 +438,7 @@ class Performance(events_lib.EventSequence):
 
 def extract_performances(
     quantized_sequence, start_step=0, min_events_discard=None,
-    max_events_truncate=None, use_velocity=False):
+    max_events_truncate=None, num_velocity_bins=0):
   """Extracts a performance from the given quantized NoteSequence.
 
   Currently, this extracts only one performance from a given track.
@@ -421,7 +450,8 @@ def extract_performances(
         discarded.
     max_events_truncate: Maximum length of tracks in events. Longer tracks are
         truncated.
-    use_velocity: If True, also encode note velocities.
+    num_velocity_bins: Number of velocity bins to use. If 0, velocity events
+        will not be included at all.
 
   Returns:
     performances: A python list of Performance instances.
@@ -453,7 +483,7 @@ def extract_performances(
 
   # Translate the quantized sequence into a Performance.
   performance = Performance(quantized_sequence, start_step=start_step,
-                            use_velocity=use_velocity)
+                            num_velocity_bins=num_velocity_bins)
 
   if (max_events_truncate is not None and
       len(performance) > max_events_truncate):

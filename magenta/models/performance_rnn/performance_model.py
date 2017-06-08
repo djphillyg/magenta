@@ -64,13 +64,14 @@ class PerformanceRnnConfig(events_rnn_model.EventSequenceRnnConfig):
   """Stores a configuration for a Performance RNN.
 
   Attributes:
-    use_velocity: Whether or not to encode note velocities.
+    num_velocity_bins: Number of velocity bins to use. If 0, don't use velocity
+        at all.
   """
 
-  def __init__(self, details, encoder_decoder, hparams, use_velocity=False):
+  def __init__(self, details, encoder_decoder, hparams, num_velocity_bins=0):
     super(PerformanceRnnConfig, self).__init__(
         details, encoder_decoder, hparams)
-    self.use_velocity = use_velocity
+    self.num_velocity_bins = num_velocity_bins
 
 
 default_configs = {
@@ -93,12 +94,27 @@ default_configs = {
             description='Performance RNN with dynamics'),
         magenta.music.OneHotEventSequenceEncoderDecoder(
             performance_encoder_decoder.PerformanceOneHotEncoding(
-                use_velocity=True)),
+                num_velocity_bins=127)),
         magenta.common.HParams(
             batch_size=64,
             rnn_layer_sizes=[512, 512, 512],
             dropout_keep_prob=0.75,
             clip_norm=5,
             learning_rate=0.001),
-        use_velocity=True),
+        num_velocity_bins=127),
+
+    'performance_with_quantized_dynamics': PerformanceRnnConfig(
+        magenta.protobuf.generator_pb2.GeneratorDetails(
+            id='performance_with_dynamics',
+            description='Performance RNN with quantized dynamics'),
+        magenta.music.OneHotEventSequenceEncoderDecoder(
+            performance_encoder_decoder.PerformanceOneHotEncoding(
+                num_velocity_bins=16)),
+        magenta.common.HParams(
+            batch_size=64,
+            rnn_layer_sizes=[512, 512, 512],
+            dropout_keep_prob=0.75,
+            clip_norm=5,
+            learning_rate=0.001),
+        num_velocity_bins=16),
 }

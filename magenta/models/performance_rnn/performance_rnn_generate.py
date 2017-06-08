@@ -233,6 +233,7 @@ def main(unused_argv):
       model=performance_model.PerformanceRnnModel(config),
       details=config.details,
       steps_per_second=config.steps_per_second,
+      num_velocity_bins=config.num_velocity_bins,
       checkpoint=get_checkpoint(),
       bundle=bundle)
 

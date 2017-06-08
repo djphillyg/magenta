@@ -33,13 +33,15 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
 
   def __init__(self, model, details,
                steps_per_second=performance_lib.DEFAULT_STEPS_PER_SECOND,
-               checkpoint=None, bundle=None):
+               num_velocity_bins=0, checkpoint=None, bundle=None):
     """Creates a PerformanceRnnSequenceGenerator.
 
     Args:
       model: Instance of PolyphonyRnnModel.
       details: A generator_pb2.GeneratorDetails for this generator.
       steps_per_second: Number of quantized steps per second.
+      num_velocity_bins: Number of quantized velocity bins. If 0, don't use
+          velocity.
       checkpoint: Where to search for the most recent model checkpoint. Mutually
           exclusive with `bundle`.
       bundle: A GeneratorBundle object that includes both the model checkpoint
@@ -48,6 +50,7 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
     super(PerformanceRnnSequenceGenerator, self).__init__(
         model, details, checkpoint, bundle)
     self.steps_per_second = steps_per_second
+    self.num_velocity_bins = num_velocity_bins
 
   def _generate(self, input_sequence, generator_options):
     if len(generator_options.input_sections) > 1:
@@ -65,7 +68,7 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
       primer_sequence = mm.trim_note_sequence(
           input_sequence, input_section.start_time, input_section.end_time)
       input_start_step = mm.quantize_to_step(
-          input_section.start_time, self.steps_per_second)
+          input_section.start_time, self.steps_per_second, quantize_cutoff=0.0)
     else:
       primer_sequence = input_sequence
       input_start_step = 0
@@ -84,11 +87,12 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
         primer_sequence, self.steps_per_second)
 
     extracted_perfs, _ = performance_lib.extract_performances(
-        quantized_primer_sequence, start_step=input_start_step)
+        quantized_primer_sequence, start_step=input_start_step,
+        num_velocity_bins=self.num_velocity_bins)
     assert len(extracted_perfs) <= 1
 
     generate_start_step = mm.quantize_to_step(
-        generate_section.start_time, self.steps_per_second)
+        generate_section.start_time, self.steps_per_second, quantize_cutoff=0.0)
     # Note that when quantizing end_step, we set quantize_cutoff to 1.0 so it
     # always rounds down. This avoids generating a sequence that ends at 5.0
     # seconds when the requested end time is 4.99.
@@ -103,7 +107,8 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
       performance = performance_lib.Performance(
           steps_per_second=(
               quantized_primer_sequence.quantization_info.steps_per_second),
-          start_step=generate_start_step)
+          start_step=generate_start_step,
+          num_velocity_bins=self.num_velocity_bins)
 
     # Ensure that the track extends up to the step we want to start generating.
     performance.set_length(generate_start_step - performance.start_step)
@@ -127,11 +132,11 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
       performance.set_length(min(performance_lib.MAX_SHIFT_STEPS, total_steps))
 
     while performance.num_steps < total_steps:
-      # Assume there's around 5 notes per second and 4 RNN steps per note. Can't
-      # know for sure until generation is finished because the number of notes
-      # per quantized step is variable.
+      # Assume there's around 10 notes per second and 4 RNN steps per note.
+      # Can't know for sure until generation is finished because the number of
+      # notes per quantized step is variable.
       steps_to_gen = total_steps - performance.num_steps
-      rnn_steps_to_gen = 20 * int(math.ceil(
+      rnn_steps_to_gen = 40 * int(math.ceil(
           float(steps_to_gen) / performance_lib.DEFAULT_STEPS_PER_SECOND))
       tf.logging.info(
           'Need to generate %d more steps for this sequence, will try asking '
@@ -159,7 +164,8 @@ def get_generator_map():
   def create_sequence_generator(config, **kwargs):
     return PerformanceRnnSequenceGenerator(
         performance_model.PerformanceRnnModel(config), config.details,
-        steps_per_second=config.steps_per_second, **kwargs)
+        steps_per_second=config.steps_per_second,
+        num_velocity_bins=config.num_velocity_bins, **kwargs)
 
   return {key: partial(create_sequence_generator, config)
           for (key, config) in performance_model.default_configs.items()}
