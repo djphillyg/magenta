@@ -97,7 +97,7 @@ default_configs = {
             description='Performance RNN with dynamics'),
         magenta.music.OneHotEventSequenceEncoderDecoder(
             performance_encoder_decoder.PerformanceOneHotEncoding(
-                num_velocity_bins=127)),
+                num_velocity_bins=32)),
         tf.contrib.training.HParams(
             batch_size=64,
             rnn_layer_sizes=[512, 512, 512],
@@ -105,21 +105,5 @@ default_configs = {
             attn_length=32,
             clip_norm=5,
             learning_rate=0.001),
-        num_velocity_bins=127),
-
-    'performance_with_quantized_dynamics': PerformanceRnnConfig(
-        magenta.protobuf.generator_pb2.GeneratorDetails(
-            id='performance_with_dynamics',
-            description='Performance RNN with quantized dynamics'),
-        magenta.music.OneHotEventSequenceEncoderDecoder(
-            performance_encoder_decoder.PerformanceOneHotEncoding(
-                num_velocity_bins=16)),
-        tf.contrib.training.HParams(
-            batch_size=64,
-            rnn_layer_sizes=[512, 512, 512],
-            dropout_keep_prob=0.75,
-            attn_length=32,
-            clip_norm=5,
-            learning_rate=0.001),
-        num_velocity_bins=16),
+        num_velocity_bins=32),
 }
