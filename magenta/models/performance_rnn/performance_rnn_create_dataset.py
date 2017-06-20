@@ -85,7 +85,11 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
   Returns:
     A pipeline.Pipeline instance.
   """
-  transposition_range = range(-6, 6)
+  # Stretch by -5%, -2.5%, 0%, 2.5%, and 5%.
+  stretch_factors = [0.95, 0.975, 1.0, 1.025, 1.05]
+
+  # Transpose no more than a major third.
+  transposition_range = range(-3, 4)
 
   partitioner = pipelines_common.RandomPartition(
       music_pb2.NoteSequence,
@@ -96,6 +100,8 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
   for mode in ['eval', 'training']:
     sustain_pipeline = note_sequence_pipelines.SustainPipeline(
         name='SustainPipeline_' + mode)
+    stretch_pipeline = note_sequence_pipelines.StretchPipeline(
+        stretch_factors, name='StretchPipeline_' + mode)
     splitter = note_sequence_pipelines.Splitter(
         hop_size_seconds=30.0, name='Splitter_' + mode)
     quantizer = note_sequence_pipelines.Quantizer(
@@ -111,7 +117,8 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
         name='EncoderPipeline_' + mode)
 
     dag[sustain_pipeline] = partitioner[mode + '_performances']
-    dag[splitter] = sustain_pipeline
+    dag[stretch_pipeline] = sustain_pipeline
+    dag[splitter] = stretch_pipeline
     dag[quantizer] = splitter
     dag[transposition_pipeline] = quantizer
     dag[perf_extractor] = transposition_pipeline
