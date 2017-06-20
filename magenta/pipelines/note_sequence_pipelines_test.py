@@ -131,9 +131,9 @@ class PipelineUnitsCommonTest(tf.test.TestCase):
         [(11, 55, 0.22, 0.50), (40, 45, 2.50, 3.50), (55, 120, 4.0, 4.01)])
 
     expected_sequences = [
-      sequences_lib.stretch_note_sequence(note_sequence, 0.5),
-      sequences_lib.stretch_note_sequence(note_sequence, 1.0),
-      sequences_lib.stretch_note_sequence(note_sequence, 1.5)]
+        sequences_lib.stretch_note_sequence(note_sequence, 0.5),
+        sequences_lib.stretch_note_sequence(note_sequence, 1.0),
+        sequences_lib.stretch_note_sequence(note_sequence, 1.5)]
 
     unit = note_sequence_pipelines.StretchPipeline(
         stretch_factors=[0.5, 1.0, 1.5])
