@@ -15,7 +15,9 @@
 
 # internal imports
 
+import tensorflow as tf
 import magenta
+
 from magenta.models.performance_rnn import performance_encoder_decoder
 from magenta.models.shared import events_rnn_model
 
@@ -81,10 +83,11 @@ default_configs = {
             description='Performance RNN'),
         magenta.music.OneHotEventSequenceEncoderDecoder(
             performance_encoder_decoder.PerformanceOneHotEncoding()),
-        magenta.common.HParams(
+        tf.contrib.training.HParams(
             batch_size=64,
             rnn_layer_sizes=[512, 512, 512],
             dropout_keep_prob=0.75,
+            attn_length=32,
             clip_norm=5,
             learning_rate=0.001)),
 
@@ -95,10 +98,11 @@ default_configs = {
         magenta.music.OneHotEventSequenceEncoderDecoder(
             performance_encoder_decoder.PerformanceOneHotEncoding(
                 num_velocity_bins=127)),
-        magenta.common.HParams(
+        tf.contrib.training.HParams(
             batch_size=64,
             rnn_layer_sizes=[512, 512, 512],
             dropout_keep_prob=0.75,
+            attn_length=32,
             clip_norm=5,
             learning_rate=0.001),
         num_velocity_bins=127),
@@ -110,10 +114,11 @@ default_configs = {
         magenta.music.OneHotEventSequenceEncoderDecoder(
             performance_encoder_decoder.PerformanceOneHotEncoding(
                 num_velocity_bins=16)),
-        magenta.common.HParams(
+        tf.contrib.training.HParams(
             batch_size=64,
             rnn_layer_sizes=[512, 512, 512],
             dropout_keep_prob=0.75,
+            attn_length=32,
             clip_norm=5,
             learning_rate=0.001),
         num_velocity_bins=16),

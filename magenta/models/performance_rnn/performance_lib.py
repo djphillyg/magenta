@@ -319,7 +319,7 @@ class Performance(events_lib.EventSequence):
           current_step += MAX_SHIFT_STEPS
         performance_events.append(
             PerformanceEvent(event_type=PerformanceEvent.TIME_SHIFT,
-                             event_value=step - current_step))
+                             event_value=int(step - current_step)))
         current_step = step
 
       # If we're using velocity and this note's velocity is different from the
@@ -469,7 +469,7 @@ def extract_performances(
   # Create a histogram measuring lengths (in bars not steps).
   stats['performance_lengths_in_seconds'] = statistics.Histogram(
       'performance_lengths_in_seconds',
-      [10, 20, 30, 40, 50, 100, 200])
+      [5, 10, 20, 30, 40, 60, 120])
 
   # Allow only 1 program.
   programs = set()

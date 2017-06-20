@@ -24,7 +24,8 @@ from magenta.models.performance_rnn.performance_lib import PerformanceEvent
 class PerformanceOneHotEncodingTest(tf.test.TestCase):
 
   def setUp(self):
-    self.enc = performance_encoder_decoder.PerformanceOneHotEncoding()
+    self.enc = performance_encoder_decoder.PerformanceOneHotEncoding(
+        num_velocity_bins=16)
 
   def testEncodeDecode(self):
     note_on_1 = PerformanceEvent(
@@ -45,6 +46,12 @@ class PerformanceOneHotEncodingTest(tf.test.TestCase):
         event_type=PerformanceEvent.TIME_SHIFT, event_value=1)
     time_shift_3 = PerformanceEvent(
         event_type=PerformanceEvent.TIME_SHIFT, event_value=100)
+    velocity_1 = PerformanceEvent(
+        event_type=PerformanceEvent.VELOCITY, event_value=5)
+    velocity_2 = PerformanceEvent(
+        event_type=PerformanceEvent.VELOCITY, event_value=1)
+    velocity_3 = PerformanceEvent(
+        event_type=PerformanceEvent.VELOCITY, event_value=16)
 
     index = self.enc.encode_event(note_on_1)
     self.assertEqual(60, index)
@@ -84,6 +91,19 @@ class PerformanceOneHotEncodingTest(tf.test.TestCase):
     self.assertEqual(355, index)
     event = self.enc.decode_event(index)
     self.assertEqual(event, time_shift_3)
+
+    index = self.enc.encode_event(velocity_1)
+    self.assertEqual(360, index)
+    event = self.enc.decode_event(index)
+    self.assertEqual(event, velocity_1)
+    index = self.enc.encode_event(velocity_2)
+    self.assertEqual(356, index)
+    event = self.enc.decode_event(index)
+    self.assertEqual(event, velocity_2)
+    index = self.enc.encode_event(velocity_3)
+    self.assertEqual(371, index)
+    event = self.enc.decode_event(index)
+    self.assertEqual(event, velocity_3)
 
 
 if __name__ == '__main__':

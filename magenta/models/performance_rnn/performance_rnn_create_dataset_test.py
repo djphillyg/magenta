@@ -35,7 +35,7 @@ class PerformancePipelineTest(tf.test.TestCase):
         None,
         magenta.music.OneHotEventSequenceEncoderDecoder(
             performance_encoder_decoder.PerformanceOneHotEncoding()),
-        magenta.common.HParams())
+        tf.contrib.training.HParams())
 
   def testPerformanceRnnPipeline(self):
     note_sequence = music_pb2.NoteSequence()

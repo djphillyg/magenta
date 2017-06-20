@@ -59,6 +59,58 @@ class PerformanceLibTest(tf.test.TestCase):
     ]
     self.assertEqual(expected_performance, performance)
 
+  def testFromQuantizedNoteSequenceWithVelocity(self):
+    testing_lib.add_track_to_sequence(
+        self.note_sequence, 0,
+        [(60, 100, 0.0, 4.0), (64, 100, 0.0, 3.0), (67, 127, 1.0, 2.0)])
+    quantized_sequence = sequences_lib.quantize_note_sequence_absolute(
+        self.note_sequence, steps_per_second=100)
+    performance = list(performance_lib.Performance(
+        quantized_sequence, num_velocity_bins=127))
+
+    pe = performance_lib.PerformanceEvent
+    expected_performance = [
+        pe(pe.VELOCITY, 100),
+        pe(pe.NOTE_ON, 60),
+        pe(pe.NOTE_ON, 64),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.VELOCITY, 127),
+        pe(pe.NOTE_ON, 67),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_OFF, 67),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_OFF, 64),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_OFF, 60),
+    ]
+    self.assertEqual(expected_performance, performance)
+
+  def testFromQuantizedNoteSequenceWithQuantizedVelocity(self):
+    testing_lib.add_track_to_sequence(
+        self.note_sequence, 0,
+        [(60, 100, 0.0, 4.0), (64, 100, 0.0, 3.0), (67, 127, 1.0, 2.0)])
+    quantized_sequence = sequences_lib.quantize_note_sequence_absolute(
+        self.note_sequence, steps_per_second=100)
+    performance = list(performance_lib.Performance(
+        quantized_sequence, num_velocity_bins=16))
+
+    pe = performance_lib.PerformanceEvent
+    expected_performance = [
+        pe(pe.VELOCITY, 13),
+        pe(pe.NOTE_ON, 60),
+        pe(pe.NOTE_ON, 64),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.VELOCITY, 16),
+        pe(pe.NOTE_ON, 67),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_OFF, 67),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_OFF, 64),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_OFF, 60),
+    ]
+    self.assertEqual(expected_performance, performance)
+
   def testToSequence(self):
     testing_lib.add_track_to_sequence(
         self.note_sequence, 0,
@@ -66,6 +118,22 @@ class PerformanceLibTest(tf.test.TestCase):
     quantized_sequence = sequences_lib.quantize_note_sequence_absolute(
         self.note_sequence, steps_per_second=100)
     performance = performance_lib.Performance(quantized_sequence)
+    performance_ns = performance.to_sequence()
+
+    # Make comparison easier by sorting.
+    performance_ns.notes.sort(key=lambda n: (n.start_time, n.pitch))
+    self.note_sequence.notes.sort(key=lambda n: (n.start_time, n.pitch))
+
+    self.assertEqual(self.note_sequence, performance_ns)
+
+  def testToSequenceWithVelocity(self):
+    testing_lib.add_track_to_sequence(
+        self.note_sequence, 0,
+        [(60, 100, 0.0, 4.0), (64, 115, 0.0, 3.0), (67, 127, 1.0, 2.0)])
+    quantized_sequence = sequences_lib.quantize_note_sequence_absolute(
+        self.note_sequence, steps_per_second=100)
+    performance = performance_lib.Performance(
+        quantized_sequence, num_velocity_bins=127)
     performance_ns = performance.to_sequence()
 
     # Make comparison easier by sorting.
