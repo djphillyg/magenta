@@ -73,6 +73,7 @@ py_binary(
         "//magenta/models/melody_rnn:melody_rnn_sequence_generator",
         "//magenta/models/pianoroll_rnn_nade:pianoroll_rnn_nade_sequence_generator",
         "//magenta/models/polyphony_rnn:polyphony_sequence_generator",
+        "//magenta/models/performance_rnn:performance_sequence_generator",
     ],
 )
 

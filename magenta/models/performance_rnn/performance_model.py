@@ -85,7 +85,7 @@ default_configs = {
             performance_encoder_decoder.PerformanceOneHotEncoding()),
         tf.contrib.training.HParams(
             batch_size=64,
-            rnn_layer_sizes=[512, 512, 512],
+            rnn_layer_sizes=[1024, 1024, 1024],
             dropout_keep_prob=1.0,
             clip_norm=3,
             learning_rate=0.001)),
@@ -96,12 +96,12 @@ default_configs = {
             description='Performance RNN with dynamics'),
         magenta.music.OneHotEventSequenceEncoderDecoder(
             performance_encoder_decoder.PerformanceOneHotEncoding(
-                num_velocity_bins=32)),
+                num_velocity_bins=127)),
         tf.contrib.training.HParams(
             batch_size=64,
-            rnn_layer_sizes=[512, 512, 512],
+            rnn_layer_sizes=[1024, 1024, 1024],
             dropout_keep_prob=1.0,
             clip_norm=3,
             learning_rate=0.001),
-        num_velocity_bins=32),
+        num_velocity_bins=127),
 }

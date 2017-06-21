@@ -17,7 +17,7 @@ Original interface built by [Yotam Mann](https://github.com/tambien) with friend
 Install [Flask](http://flask.pocoo.org/) and [Magenta](/README.md#Installation) (v0.1.15 or greater). Also download the following pre-trained models, and save them to this directory.
 
 * [Attention RNN](http://download.magenta.tensorflow.org/models/attention_rnn.mag)
-* [Pianoroll RNN-NADE](http://download.magenta.tensorflow.org/models/pianoroll_rnn_nade.mag)
+* [Performance RNN](https://x20web.corp.google.com/users/ia/iansimon/performance_rnn.mag)
 * [Drum Kit RNN](http://download.magenta.tensorflow.org/models/drum_kit_rnn.mag)
 
 Then launch the interface from the command line:
